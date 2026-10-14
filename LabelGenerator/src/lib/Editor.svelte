@@ -4,8 +4,10 @@
     import qz from "qz-tray";
     import { buildZpl } from "../lib/zpl.js";
 
-    const LABEL_W = 60; // mm, the width of your design
-    const LABEL_H = 90; // mm
+    const SIZES = [
+        { key: "60x90", w: 60, h: 90, label: "60 × 90 mm" },
+        { key: "100x150", w: 100, h: 150, label: "100 × 150 mm" },
+    ];
     const CORES = [
         "RAL 2004",
         "RAL 7032",
@@ -13,6 +15,7 @@
         "RAL 9003",
         "RAL 9010",
         "RAL 5010",
+        "INOX",
     ];
 
     const CONFIG = {
@@ -52,7 +55,15 @@
     let rotation = $state(90);
     let textMode = $state("image");
     let status = $state("");
-    let labelHeightMm = $state(LABEL_H);
+    let labelHeightMm = $state(90);
+    let sizeKey = $state("60x90");
+    const labelSize = $derived(SIZES.find((s) => s.key === sizeKey));
+    const scale = $derived(labelSize.w / 60); // the design is 60 mm wide
+    const physHeight = $derived(labelHeightMm * scale);
+
+    function changeSize(key) {
+        if (key === "100x150") rotation = 0; // 100 mm wide roll, so print upright
+    }
     let landscape = $state(false);
     let titleField = $state({
         el: null,
@@ -62,6 +73,14 @@
         weight: 700,
         defSize: 0,
         defWeight: 700,
+    });
+    let line2 = $state({
+        el: null,
+        text: "",
+        size: 12,
+        weight: 500,
+        defSize: 12,
+        defWeight: 500,
     });
 
     const where = (el) => {
@@ -83,9 +102,12 @@
 
     onMount(() => {
         const svg = container.querySelector("svg");
-        const fontFix = document.createElementNS('http://www.w3.org/2000/svg', 'style');
-fontFix.textContent = 'text { font-family: Roboto, sans-serif; }';
-svg.querySelector('defs').append(fontFix);
+        const fontFix = document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "style",
+        );
+        fontFix.textContent = "text { font-family: Roboto, sans-serif; }";
+        svg.querySelector("defs").append(fontFix);
         const vb = svg.viewBox.baseVal;
 
         const texts = [...svg.querySelectorAll("text")].map((el) => ({
@@ -162,6 +184,20 @@ svg.querySelector('defs').append(fontFix);
             defSize: ts.size,
             defWeight: ts.weight,
         };
+        // second title line: a copy of the title <text>, only shown when it has text
+        const el2 = title.el.cloneNode(false);
+        el2.textContent = "";
+        title.el.after(el2);
+        const s2 = Math.round(ts.size) / 2; // starts at about half the title size
+        line2 = {
+            el: el2,
+            text: "",
+            size: s2,
+            weight: 500,
+            defSize: s2,
+            defWeight: 500,
+        };
+        layout.titleTop = Math.max(0, title.y - 0.711 * ts.size); // space above the first line
 
         const labels = rowTexts.filter((t) => t.x < 100);
         const values = rowTexts.filter((t) => t.x >= 100);
@@ -241,7 +277,10 @@ svg.querySelector('defs').append(fontFix);
         if (!titleField.el) return;
         titleField.el.textContent = title;
         applyStyle(titleField.el, titleField.size, titleField.weight);
-
+        if (line2.el) {
+            line2.el.textContent = line2.text;
+            applyStyle(line2.el, line2.size, line2.weight);
+        }
         for (const f of fields) {
             f.el.textContent = f.kind === "dim" ? `${f.value}mm` : f.value;
             applyStyle(f.el, f.size, f.weight);
@@ -263,17 +302,36 @@ svg.querySelector('defs').append(fontFix);
             slack,
         } = layout;
 
-        // how much taller each row got
-        const T = GROWTH * Math.max(0, titleField.size - titleField.defSize);
+        // title block: one or two lines, sitting just above the bar
+        const CAP = 0.711; // cap height of Roboto, as a fraction of the font size
+        const second = line2.text.trim() !== "";
+        const lastSize = second ? line2.size : titleField.size;
+        const gap = Math.max(3.5, 0.35 * lastSize); // space between the last line and the bar
+        const step = (CAP + 0.3) * line2.size; // distance between the two baselines
+        const need =
+            layout.titleTop + CAP * titleField.size + (second ? step : 0) + gap;
+        const T = Math.max(0, need - bar.y); // how much the title area has to grow
+        const lastBase = bar.y + T - gap;
+        const base1 = second ? lastBase - step : lastBase;
+        titleItem.el.setAttribute(
+            "transform",
+            `translate(${titleItem.x} ${base1})`,
+        );
+        line2.el?.setAttribute(
+            "transform",
+            `translate(${titleItem.x} ${lastBase})`,
+        );
+
+        // table rows
         const growth = lines.map(() => 0);
         for (const f of fields) {
+            if (f.row == null) continue;
             growth[f.row] = Math.max(
                 growth[f.row],
                 GROWTH * Math.max(0, f.size - f.defSize),
             );
         }
 
-        // after[i] = total shift at the bottom of row i
         const after = [];
         let run = T;
         for (const g of growth) {
@@ -281,12 +339,10 @@ svg.querySelector('defs').append(fontFix);
             after.push(run);
         }
 
-        moveText(titleItem, T);
         moveRect(bar, T);
         lines.forEach((l, i) => moveRect(l, after[i]));
         rowTexts.forEach((t) => moveText(t, after[t.row]));
 
-        // logo, circle and footer move down; the canvas grows only if the slack is used up
         const lowerShift = Math.max(0, run - slack);
         for (const item of lower) {
             if (item.isGroup)
@@ -295,10 +351,9 @@ svg.querySelector('defs').append(fontFix);
         }
         const H = vb.h + lowerShift;
         svg.setAttribute("viewBox", `0 0 ${vb.w} ${H}`);
-        bg.setAttribute("height", H);
-        labelHeightMm = (H * 25.4) / 72; // 1 SVG unit = 1 pt
+        bg?.setAttribute("height", H);
+        labelHeightMm = (H * 25.4) / 72;
     });
-
     const bump = (f, delta) => {
         f.size = Math.min(
             MAX_SIZE,
@@ -312,12 +367,12 @@ svg.querySelector('defs').append(fontFix);
     async function printLabel() {
         await document.fonts.ready; // make sure Roboto is loaded before printing
 
-        const pageW = landscape ? LABEL_H : LABEL_W;
-        const pageH = landscape ? LABEL_W : LABEL_H;
+        const pageW = landscape ? labelSize.h : labelSize.w;
+        const pageH = landscape ? labelSize.w : labelSize.h;
 
         const clone = layout.svg.cloneNode(true);
-        clone.setAttribute("width", `${LABEL_W}mm`);
-        clone.setAttribute("height", `${LABEL_H}mm`);
+        clone.setAttribute("width", `${labelSize.w}mm`);
+        clone.setAttribute("height", `${labelSize.h}mm`);
         // if rows grew and the label is taller than 90 mm, shrink it to fit
         clone.setAttribute("preserveAspectRatio", "xMidYMin meet");
         // a thermal head can't print grey, so drop the preview background
@@ -359,10 +414,13 @@ svg.querySelector('defs').append(fontFix);
         const clone = layout.svg.cloneNode(true);
         // keep the real print size: 1 SVG unit = 1 pt, so the original is exactly 60 x 90 mm
         const v = layout.svg.viewBox.baseVal;
-        clone.setAttribute("width", `${((v.width * 25.4) / 72).toFixed(2)}mm`);
+        clone.setAttribute(
+            "width",
+            `${(((v.width * 25.4) / 72) * scale).toFixed(2)}mm`,
+        );
         clone.setAttribute(
             "height",
-            `${((v.height * 25.4) / 72).toFixed(2)}mm`,
+            `${(((v.height * 25.4) / 72) * scale).toFixed(2)}mm`,
         );
 
         const xml = new XMLSerializer().serializeToString(clone);
@@ -423,6 +481,7 @@ svg.querySelector('defs').append(fontFix);
                 copies,
                 rotation,
                 mode: textMode,
+                scale,
             });
             await qzConnect();
             const cfg = qz.configs.create(printerName, { encoding: "UTF-8" });
@@ -483,7 +542,7 @@ svg.querySelector('defs').append(fontFix);
     <form>
         <div class="field">
             <label>
-                {titleField.unlocked ? "✏️" : "🔒"} Título {titleField.unlocked
+                {titleField.unlocked ? "" : ""} Título {titleField.unlocked
                     ? "(manual)"
                     : "(automático)"}
                 {#if titleField.unlocked}
@@ -501,6 +560,17 @@ svg.querySelector('defs').append(fontFix);
                 Desbloquear título
             </label>
             {@render textStyle(titleField)}
+        </div>
+
+        <div class="field">
+            <label>
+                Título, 2ª linha (opcional)
+                <input
+                    bind:value={line2.text}
+                    placeholder="Deixe vazio para uma linha só"
+                />
+            </label>
+            {@render textStyle(line2)}
         </div>
 
         {#each fields as f}
@@ -529,6 +599,25 @@ svg.querySelector('defs').append(fontFix);
         {/each}
 
         <div class="field">
+            <label>
+                Tamanho da etiqueta
+                <select
+                    bind:value={sizeKey}
+                    onchange={(e) => changeSize(e.currentTarget.value)}
+                >
+                    {#each SIZES as s}
+                        <option value={s.key}>{s.label}</option>
+                    {/each}
+                </select>
+            </label>
+
+            {#if physHeight > labelSize.h + 0.01}
+                <p class="warn">
+                    ⚠️ A etiqueta ficou com {physHeight.toFixed(1)} mm de altura,
+                    mais que os
+                    {labelSize.h} mm da etiqueta.
+                </p>
+            {/if}
             <label>
                 Impressora
                 <select bind:value={printerName} onchange={savePrinter}>

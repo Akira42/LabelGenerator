@@ -142,11 +142,11 @@ async function bitmap(svg, W, H, rot, full) {
 
 // rotation: 0 = portrait 60x90, 90 = turned clockwise, 270 = turned counter-clockwise
 // mode: 'image' = everything as a Roboto bitmap, 'native' = printer font for text
-export async function buildZpl(svg, { copies = 1, rotation = 0, mode = 'image' } = {}) {
+export async function buildZpl(svg, { copies = 1, rotation = 0, mode = 'image', scale = 1 } = {}) {
   await document.fonts.ready;
 
   const vb = svg.viewBox.baseVal;
-  const k = ZPL.dpi / 72;
+  const k = (ZPL.dpi / 72) * scale;
   const W = Math.round(vb.width * k);
   const H = Math.round(vb.height * k);
   const sx = W / vb.width;
