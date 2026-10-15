@@ -61,14 +61,24 @@
     const scale = $derived(labelSize.w / 60); // the design is 60 mm wide
     const physHeight = $derived(labelHeightMm * scale);
 
+    // Função para bloquear as setas do teclado
+    function blockArrows(e) {
+        if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+            e.preventDefault();
+        }
+    }
+
+    function blockWheel(e) {
+        e.preventDefault();
+    }
+
     function changeSize(key) {
         if (key === "100x150") rotation = 0; // 100 mm wide roll, so print upright
     }
     let landscape = $state(false);
     let titleField = $state({
         el: null,
-        unlocked: false,
-        custom: "",
+        text: "",
         size: 0,
         weight: 700,
         defSize: 0,
@@ -76,7 +86,8 @@
     });
     let line2 = $state({
         el: null,
-        text: "",
+        unlocked: false,
+        custom: "",
         size: 12,
         weight: 500,
         defSize: 12,
@@ -177,8 +188,7 @@
         const ts = readStyle(title.el);
         titleField = {
             el: title.el,
-            unlocked: false,
-            custom: "",
+            text: "QDFL",
             size: ts.size,
             weight: ts.weight,
             defSize: ts.size,
@@ -191,7 +201,8 @@
         const s2 = Math.round(ts.size) / 2; // starts at about half the title size
         line2 = {
             el: el2,
-            text: "",
+            unlocked: false,
+            custom: "",
             size: s2,
             weight: 500,
             defSize: s2,
@@ -259,11 +270,12 @@
         return `${d.h}x${d.w}x${d.d}`;
     });
 
-    const title = $derived(titleField.unlocked ? titleField.custom : autoTitle);
+    const title = $derived(autoTitle); // dimensions, still used for the file names
+    const dimsLine = $derived(line2.unlocked ? line2.custom : autoTitle);
 
-    function toggleTitleLock(e) {
-        titleField.unlocked = e.currentTarget.checked;
-        if (titleField.unlocked) titleField.custom = autoTitle;
+    function toggleDimsLock(e) {
+        line2.unlocked = e.currentTarget.checked;
+        if (line2.unlocked) line2.custom = autoTitle; // start from the current value
     }
 
     const applyStyle = (el, size, weight) => {
@@ -275,10 +287,10 @@
     // text + font style
     $effect(() => {
         if (!titleField.el) return;
-        titleField.el.textContent = title;
+        titleField.el.textContent = titleField.text;
         applyStyle(titleField.el, titleField.size, titleField.weight);
         if (line2.el) {
-            line2.el.textContent = line2.text;
+            line2.el.textContent = dimsLine;
             applyStyle(line2.el, line2.size, line2.weight);
         }
         for (const f of fields) {
@@ -303,16 +315,21 @@
         } = layout;
 
         // title block: one or two lines, sitting just above the bar
-        const CAP = 0.711; // cap height of Roboto, as a fraction of the font size
-        const second = line2.text.trim() !== "";
-        const lastSize = second ? line2.size : titleField.size;
-        const gap = Math.max(3.5, 0.35 * lastSize); // space between the last line and the bar
-        const step = (CAP + 0.3) * line2.size; // distance between the two baselines
-        const need =
-            layout.titleTop + CAP * titleField.size + (second ? step : 0) + gap;
-        const T = Math.max(0, need - bar.y); // how much the title area has to grow
+        const CAP = 0.711;
+        const has1 = titleField.text.trim() !== "";
+        const has2 = dimsLine.trim() !== "";
+        const lastSize = has2 ? line2.size : titleField.size;
+        const gap = Math.max(3.5, 0.35 * lastSize);
+        const step = (CAP + 0.3) * line2.size;
+
+        let need = layout.titleTop + gap;
+        if (has1) need += CAP * titleField.size;
+        if (has1 && has2) need += step;
+        if (!has1 && has2) need += CAP * line2.size;
+
+        const T = Math.max(0, need - bar.y);
         const lastBase = bar.y + T - gap;
-        const base1 = second ? lastBase - step : lastBase;
+        const base1 = has1 && has2 ? lastBase - step : lastBase;
         titleItem.el.setAttribute(
             "transform",
             `translate(${titleItem.x} ${base1})`,
@@ -321,7 +338,6 @@
             "transform",
             `translate(${titleItem.x} ${lastBase})`,
         );
-
         // table rows
         const growth = lines.map(() => 0);
         for (const f of fields) {
@@ -445,7 +461,7 @@
         try {
             await qzConnect();
         } catch (e) {
-            status = `Não consegui conectar ao QZ Tray (${e?.message ?? e}). Verifique se ele está aberto e permita o site na janela dele.`;
+            status = `Não foi possível conectar ao QZ Tray (${e?.message ?? e}). Verifique se ele está aberto e permita o site na janela dele.`;
             return;
         }
         try {
@@ -542,11 +558,22 @@
     <form>
         <div class="field">
             <label>
-                {titleField.unlocked ? "" : ""} Título {titleField.unlocked
+                Título (1ª linha)
+                <input
+                    bind:value={titleField.text}
+                    placeholder="Ex.: nome do quadro"
+                />
+            </label>
+            {@render textStyle(titleField)}
+        </div>
+
+        <div class="field">
+            <label>
+                {line2.unlocked ? "" : ""} Dimensões (2ª linha) {line2.unlocked
                     ? "(manual)"
                     : "(automático)"}
-                {#if titleField.unlocked}
-                    <input bind:value={titleField.custom} />
+                {#if line2.unlocked}
+                    <input bind:value={line2.custom} />
                 {:else}
                     <input value={autoTitle} readonly class="locked" />
                 {/if}
@@ -554,21 +581,10 @@
             <label class="check">
                 <input
                     type="checkbox"
-                    checked={titleField.unlocked}
-                    onchange={toggleTitleLock}
+                    checked={line2.unlocked}
+                    onchange={toggleDimsLock}
                 />
-                Desbloquear título
-            </label>
-            {@render textStyle(titleField)}
-        </div>
-
-        <div class="field">
-            <label>
-                Título, 2ª linha (opcional)
-                <input
-                    bind:value={line2.text}
-                    placeholder="Deixe vazio para uma linha só"
-                />
+                Desbloquear dimensões
             </label>
             {@render textStyle(line2)}
         </div>
@@ -581,7 +597,8 @@
                         <input
                             type="number"
                             min="1"
-                            step="1"
+                            onkeydown={blockArrows}
+                            onwheel={blockWheel}
                             bind:value={f.value}
                         />
                     {:else if f.kind === "select"}
@@ -648,7 +665,7 @@
                 <input type="number" min="1" max="500" bind:value={copies} />
             </label>
             <button type="button" onclick={printZpl} disabled={!printerName}
-                >🖨️ Imprimir</button
+                >Imprimir</button
             >
             <button type="button" onclick={downloadZpl}>Baixar .zpl</button>
             {#if status}<p class="warn">{status}</p>{/if}
@@ -688,8 +705,6 @@
         font-size: 0.8rem;
     }
     .locked {
-        background: #eee;
-        color: #555;
         cursor: not-allowed;
     }
     .style-row {
@@ -712,6 +727,8 @@
     }
     .preview {
         width: 340px;
+        position: relative;
+        height: -webkit-fill-available;
     }
     .preview :global(svg) {
         width: 100%;
@@ -721,5 +738,17 @@
         margin: 0;
         font-size: 0.8rem;
         color: #b45309;
+    }
+
+    /* Chrome, Safari, Edge, Opera */
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+
+    /* Firefox */
+    input[type="number"] {
+        -moz-appearance: textfield;
     }
 </style>
