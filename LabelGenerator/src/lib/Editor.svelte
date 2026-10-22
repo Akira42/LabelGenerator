@@ -3,6 +3,8 @@
     import labelSvg from "../lib/labels/label.svg?raw";
     import qz from "qz-tray";
     import { buildZpl } from "../lib/zpl.js";
+    import { scopeSvg } from "./scopeSvg.js";
+    const labelSvgScoped = scopeSvg(labelSvg, "sv-panel");
 
     const SIZES = [
         { key: "60x90", w: 60, h: 90, label: "60 × 90 mm" },
@@ -468,7 +470,12 @@
             const found = await qz.printers.find();
             printers = Array.isArray(found) ? found : [found];
             let saved = "";
-            try { saved = localStorage.getItem('printer-panel') ?? localStorage.getItem('printer') ?? ''; } catch {}
+            try {
+                saved =
+                    localStorage.getItem("printer-panel") ??
+                    localStorage.getItem("printer") ??
+                    "";
+            } catch {}
             printerName =
                 printers.find((p) => p === saved) ??
                 printers.find((p) => /elgin|l42/i.test(p)) ??
@@ -483,7 +490,9 @@
     }
 
     const savePrinter = () => {
-        try { localStorage.setItem('printer-panel', printerName); } catch {}
+        try {
+            localStorage.setItem("printer-panel", printerName);
+        } catch {}
     };
 
     async function printZpl() {
@@ -631,14 +640,14 @@
                     {labelSize.h} mm da etiqueta.
                 </p>
             {/if}
-<label>
-  Impressora
-  <select bind:value={printerName} onchange={savePrinter}>
-    {#each printers as p}
-      <option value={p}>{p}</option>
-    {/each}
-  </select>
-</label>
+            <label>
+                Impressora
+                <select bind:value={printerName} onchange={savePrinter}>
+                    {#each printers as p}
+                        <option value={p}>{p}</option>
+                    {/each}
+                </select>
+            </label>
             <label>
                 Orientação da etiqueta
                 <select bind:value={rotation}>
@@ -669,7 +678,7 @@
         <button type="button" onclick={download}>Baixar SVG</button>
     </form>
 
-    <div class="preview" bind:this={container}>{@html labelSvg}</div>
+    <div class="preview" bind:this={container}>{@html labelSvgScoped}</div>
 </main>
 
 <style>
