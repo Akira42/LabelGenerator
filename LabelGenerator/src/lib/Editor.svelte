@@ -468,9 +468,7 @@
             const found = await qz.printers.find();
             printers = Array.isArray(found) ? found : [found];
             let saved = "";
-            try {
-                saved = localStorage.getItem("printer") ?? "";
-            } catch {}
+            try { saved = localStorage.getItem('printer-panel') ?? localStorage.getItem('printer') ?? ''; } catch {}
             printerName =
                 printers.find((p) => p === saved) ??
                 printers.find((p) => /elgin|l42/i.test(p)) ??
@@ -485,9 +483,7 @@
     }
 
     const savePrinter = () => {
-        try {
-            localStorage.setItem("printer", printerName);
-        } catch {}
+        try { localStorage.setItem('printer-panel', printerName); } catch {}
     };
 
     async function printZpl() {
@@ -635,14 +631,14 @@
                     {labelSize.h} mm da etiqueta.
                 </p>
             {/if}
-            <label>
-                Impressora
-                <select bind:value={printerName} onchange={savePrinter}>
-                    {#each printers as p}
-                        <option value={p}>{p}</option>
-                    {/each}
-                </select>
-            </label>
+<label>
+  Impressora
+  <select bind:value={printerName} onchange={savePrinter}>
+    {#each printers as p}
+      <option value={p}>{p}</option>
+    {/each}
+  </select>
+</label>
             <label>
                 Orientação da etiqueta
                 <select bind:value={rotation}>

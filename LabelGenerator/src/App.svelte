@@ -4,9 +4,12 @@
   import heroImg from './assets/hero.png'
   import Counter from './lib/Counter.svelte'
   import Editor from './lib/Editor.svelte'
+  import SmallEditor from './lib/SmallLabelEditor.svelte'
 </script>
 
 
 <section>
   <Editor />
+
+  <SmallEditor />
 </section>
